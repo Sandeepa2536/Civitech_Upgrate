@@ -29,6 +29,28 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Deployment Configuration
+
+Before deploying, ensure you have set up the following environment variables in your hosting provider (e.g., Vercel, Netlify):
+
+```env
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://bucudnopgltcbbsnspub.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+
+# Auth Configuration
+AUTH_SECRET=your_secure_random_secret_here
+```
+
+### Database Preparation
+The project is optimized for Supabase. All required tables, policies, and initial seed data are included in the `supabase/migrations` folder. 
+
+### Final Checks
+1. Run `npm run build` to verify the production build.
+2. Run `npm run lint` to ensure code quality.
+3. Verify that Row Level Security (RLS) is enabled on all tables in Supabase.
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
