@@ -12,13 +12,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Public client for client-side fetching (Respects RLS)
-export const supabase = createClient(
-  supabaseUrl || '', 
-  supabaseAnonKey || ''
-);
+export const supabase = (supabaseUrl && supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : {} as any; // Return dummy object to prevent crashes if env vars are missing
 
 // Admin client for server-side mutations (Bypasses RLS - use only in server actions)
-console.log("Initializing supabaseAdmin. Key exists:", !!supabaseServiceKey);
 export const supabaseAdmin = (supabaseUrl && supabaseServiceKey)
   ? createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
