@@ -19,6 +19,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useAlert } from "@/components/AlertContext";
 import { changePassword, updateSiteContentAction } from "./actions";
+import { updateDirectorBio } from "../actions";
 import { motion } from "framer-motion";
 import NextImage from "next/image";
 
