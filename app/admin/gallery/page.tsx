@@ -168,7 +168,7 @@ export default function AdminGalleryManagement() {
 
       showAlert(`Successfully uploaded ${files.length} images`, "success");
       // Update local state instead of re-fetching from DB
-      setEventImages(prev => [...prev, ...result.data]);
+      setEventImages(prev => [...(prev || []), ...(result.data || [])]);
     } catch (error: any) {
       showAlert("Error uploading images: " + error.message, "error");
     } finally {

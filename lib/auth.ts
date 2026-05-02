@@ -1,16 +1,18 @@
-import bcrypt from 'bcryptjs';
-
-const SECRET = process.env.AUTH_SECRET || 'fallback-secret-for-dev-only';
-const encoder = new TextEncoder();
+const getBcrypt = async () => (await import('bcryptjs'));
 
 export async function hashPassword(password: string): Promise<string> {
+  const bcrypt = await getBcrypt();
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(password, salt);
 }
 
 export async function comparePassword(password: string, hash: string): Promise<boolean> {
+  const bcrypt = await getBcrypt();
   return bcrypt.compare(password, hash);
 }
+
+const SECRET = process.env.AUTH_SECRET || 'fallback-secret-for-dev-only';
+const encoder = new TextEncoder();
 
 async function getHmac(data: string): Promise<string> {
   const keyData = encoder.encode(SECRET);

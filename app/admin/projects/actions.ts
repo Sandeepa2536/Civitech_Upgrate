@@ -151,3 +151,21 @@ export async function deactivateProjectAction(id: string) {
         return { error: error.message };
     }
 }
+
+export async function deleteProjectAction(id: string) {
+  try {
+    const { error } = await supabaseAdmin
+      .from('projects')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+
+    revalidatePath("/projects");
+    revalidatePath("/admin/projects");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Delete Action error:", error);
+    return { error: error.message };
+  }
+}
