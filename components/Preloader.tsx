@@ -4,34 +4,37 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useLoading } from "./LoadingContext";
 
 export default function Preloader() {
   const [mounted, setMounted] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const { isLoading, setIsLoading } = useLoading();
   const pathname = usePathname();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // Trigger loading on pathname change
   useEffect(() => {
     if (mounted) {
-      setLoading(true);
-      const timer = setTimeout(() => setLoading(false), 1200);
+      setIsLoading(true);
+      // Fallback timeout to prevent infinite loading if a page fails to signal completion
+      const timer = setTimeout(() => setIsLoading(false), 5000);
       return () => clearTimeout(timer);
     }
-  }, [pathname, mounted]);
+  }, [pathname, mounted, setIsLoading]);
 
   if (!mounted) return null;
 
   return (
     <AnimatePresence mode="wait">
-      {loading && (
+      {isLoading && (
         <motion.div
           key="preloader"
           initial={{ opacity: 1 }}
-          exit={{ opacity: 0, y: -100 }}
-          transition={{ duration: 0.6, ease: [0.43, 0.13, 0.23, 0.96] }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.5, ease: "easeInOut" }}
           className="fixed inset-0 z-[9999] bg-white dark:bg-slate-950 flex flex-col items-center justify-center pointer-events-auto transition-colors duration-500"
         >
           <motion.div

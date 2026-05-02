@@ -119,16 +119,16 @@ export default function NewProject() {
 
       // 2. Upload Gallery Images
       const activeGalleryFiles = galleryFiles.filter(f => f !== null);
-      const galleryUrls = [];
-      for (const f of activeGalleryFiles) {
-        const fileExt = f!.name.split('.').pop();
-        const fileName = `gallery/${Date.now()}-${Math.random()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('project-images').upload(fileName, f!);
-        if (!uploadError) {
+      const galleryUrls = await Promise.all(
+        activeGalleryFiles.map(async (f) => {
+          const fileExt = f!.name.split('.').pop();
+          const fileName = `gallery/${Date.now()}-${Math.random()}.${fileExt}`;
+          const { error: uploadError } = await supabase.storage.from('project-images').upload(fileName, f!);
+          if (uploadError) throw uploadError;
           const { data: { publicUrl } } = supabase.storage.from('project-images').getPublicUrl(fileName);
-          galleryUrls.push({ path: publicUrl });
-        }
-      }
+          return { path: publicUrl };
+        })
+      );
 
       // 3. Call Server Action (Handles Category, Scope, and Project securely)
       const cleanVideoId = getYouTubeId(formData.video_url) || formData.video_url;

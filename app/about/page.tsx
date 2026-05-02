@@ -54,21 +54,23 @@ export default function AboutPage() {
     try {
       const { data, error } = await supabase
         .from('site_content')
-        .select('*')
+        .select('key, value')
         .in('key', ['about_vision', 'about_mission']);
 
       if (error) throw error;
 
-      const dynamicContent: Partial<AboutContent> = {};
-      data?.forEach(item => {
-        if (item.key === 'about_vision') dynamicContent.vision = item.value;
-        if (item.key === 'about_mission') dynamicContent.mission = item.value;
-      });
+      if (data) {
+        const dynamicContent: Partial<AboutContent> = {};
+        data.forEach(item => {
+          if (item.key === 'about_vision') dynamicContent.vision = item.value;
+          if (item.key === 'about_mission') dynamicContent.mission = item.value;
+        });
 
-      setContent((prev) => ({
-        ...prev,
-        ...dynamicContent
-      }));
+        setContent((prev) => ({
+          ...prev,
+          ...dynamicContent
+        }));
+      }
     } catch (err) {
       console.error("Error fetching about content:", err);
     }

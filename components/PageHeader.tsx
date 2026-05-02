@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import Image from "next/image";
+import { resolveImageUrl } from "@/lib/utils";
 
 interface PageHeaderProps {
   subtitle: string;
@@ -19,9 +20,10 @@ const PageHeader = ({ subtitle, title, highlightedTitle, description, background
       {backgroundImage && (
         <div className="absolute inset-0 z-0">
           <Image 
-            src={backgroundImage} 
+            src={resolveImageUrl(backgroundImage)} 
             alt={title}
             fill
+            unoptimized
             className="w-full h-full object-cover opacity-80 md:opacity-65 dark:opacity-40"
             priority
           />

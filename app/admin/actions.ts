@@ -4,6 +4,37 @@ import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
+export async function updateDirectorBio(bio: string, email: string) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("admin_session")?.value;
+
+    if (!token) return { error: "Not authenticated" };
+
+    // Find the MD's ID using job_role_id = 2
+    const { data: md, error: fetchError } = await supabaseAdmin
+      .from('members')
+      .select('id')
+      .eq('job_role_id', 2)
+      .single();
+
+    if (fetchError || !md) return { error: "Managing Director not found" };
+
+    const { error } = await supabaseAdmin
+      .from('members')
+      .update({ bio, email })
+      .eq('id', md.id);
+
+    if (error) throw error;
+
+    return { success: true };
+  } catch (err) {
+    const error = err as Error;
+    console.error("Update director error:", error);
+    return { error: error.message || "Failed to update director info" };
+  }
+}
+
 export async function getCurrentUser() {
   try {
     const cookieStore = await cookies();

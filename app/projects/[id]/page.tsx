@@ -24,7 +24,8 @@ import Link from "next/link";
 import ScrollReveal from "@/components/ScrollReveal";
 import { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
-import { getYouTubeId } from "@/lib/utils";
+import { getYouTubeId, resolveImageUrl } from "@/lib/utils";
+import { useLoading } from "@/components/LoadingContext";
 
 interface ProjectDetail {
   id: string;
@@ -39,6 +40,7 @@ function ProjectDetailContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { setIsLoading } = useLoading();
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [videoUrl, setVideoUrl] = useState<string>("");
@@ -53,24 +55,29 @@ function ProjectDetailContent() {
   async function fetchProjectDetails() {
     try {
       setLoading(true);
+      setIsLoading(true);
       
-      // 1. Fetch from optimized view for core data
-      const { data: summary, error: summaryError } = await supabase
-        .from('project_summary')
-        .select('*')
+      // 1. Fetch from base table with direct joins
+      const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select(`
+          *,
+          category(category),
+          status(status)
+        `)
         .eq('id', params.id)
         .single();
 
-      if (summaryError) throw summaryError;
+      if (projectError) throw projectError;
 
-      if (summary) {
+      if (project) {
         setProject({
-          id: summary.id.toString(),
-          name: summary.title,
-          location: summary.location_name,
-          category: summary.category || "Uncategorized",
-          status: summary.status || "Unknown",
-          image: summary.cover_image || "/projects/image1.png"
+          id: project.id.toString(),
+          name: project.title,
+          location: project.location,
+          category: (project.category as any)?.category || "Uncategorized",
+          status: (project.status as any)?.status || "Unknown",
+          image: resolveImageUrl(project.cover_image)
         });
 
         // 2. Fetch related media separately (optimized)
@@ -80,7 +87,7 @@ function ProjectDetailContent() {
         ]);
 
         if (imgRes.data) {
-          setGalleryImages(imgRes.data.map(img => img.path));
+          setGalleryImages(imgRes.data.map(img => resolveImageUrl(img.path)));
         }
 
         if (vidRes.data?.[0]) {
@@ -91,6 +98,7 @@ function ProjectDetailContent() {
       console.error('Error fetching project details:', error.message);
     } finally {
       setLoading(false);
+      setIsLoading(false);
     }
   }
 
@@ -127,7 +135,7 @@ function ProjectDetailContent() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
-        <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+        {/* The global preloader will handle this */}
       </div>
     );
   }
@@ -175,7 +183,7 @@ function ProjectDetailContent() {
       <div className="max-w-7xl mx-auto px-4 md:px-12 lg:px-16">
         <section className="mb-12 md:mb-16">
           <div className="flex flex-col gap-8 md:gap-20 mb-16 md:mb-32">
-            <ScrollReveal>
+            <div>
               <div className="flex items-center space-x-3 mb-6 md:mb-8">
                 <div className="bg-emerald-700 p-3 md:p-4 rounded-xl md:rounded-2xl shadow-xl shadow-emerald-950/20">
                   <Sparkles className="w-5 h-5 md:w-6 md:h-6 text-white" />
@@ -197,7 +205,7 @@ function ProjectDetailContent() {
                     allowFullScreen
                   ></iframe>
                 ) : (
-                  <Image src={project.image} alt={project.name} fill className="w-full h-full object-cover" priority />
+                  <Image src={project.image} alt={project.name} fill unoptimized className="w-full h-full object-cover" priority />
                 )}
                 {!videoUrl && <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent"></div>}
                 <div className="absolute bottom-6 right-6 md:bottom-10 md:right-10 px-4 md:px-6 py-2 md:py-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl md:rounded-2xl">
@@ -240,12 +248,12 @@ function ProjectDetailContent() {
                   </div>
                 </div>
               </div>
-            </ScrollReveal>
+            </div>
           </div>
         </section>
 
         <section className="mb-12 md:mb-16">
-          <ScrollReveal>
+          <div>
             <div className="flex items-center space-x-3 md:space-x-4 mb-8 md:mb-12">
               <div className="bg-emerald-700 p-3 md:p-4 rounded-xl md:rounded-2xl shadow-lg"><ImageIcon className="w-5 h-5 md:w-6 md:h-6 text-white" /></div>
               <div>
@@ -254,22 +262,21 @@ function ProjectDetailContent() {
               </div>
               <div className="flex-1 h-[1px] bg-gray-100 dark:bg-slate-800 ml-4"></div>
             </div>
-          </ScrollReveal>
+          </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-8">
             {galleryImages.length > 0 ? (
               galleryImages.map((img, index) => (
-                <ScrollReveal key={index} delay={index * 0.1}>
-                  <div 
-                    onClick={() => setLightboxImageIndex(index)}
-                    className="relative aspect-[4/3] rounded-2xl md:rounded-[2rem] overflow-hidden border border-gray-100 dark:border-slate-800 group shadow-sm hover:shadow-2xl transition-all duration-500 cursor-pointer"
-                  >
-                    <Image src={img} alt={`Project Gallery ${index + 1}`} fill className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-110" />
-                    <div className="absolute inset-0 bg-emerald-900/5 group-hover:bg-transparent transition-colors flex items-center justify-center">
-                       <Maximize2 className="text-white opacity-0 group-hover:opacity-100 transition-opacity duration-500 md:w-8 md:h-8" size={24} />
-                    </div>
+                <div 
+                  key={index}
+                  onClick={() => setLightboxImageIndex(index)}
+                  className="relative aspect-[4/3] rounded-2xl md:rounded-[2rem] overflow-hidden border border-gray-100 dark:border-slate-800 group shadow-sm hover:shadow-2xl transition-all duration-500 cursor-pointer"
+                >
+                  <Image src={img} alt={`Project Gallery ${index + 1}`} fill unoptimized className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-110" />
+                  <div className="absolute inset-0 bg-emerald-900/5 group-hover:bg-transparent transition-colors flex items-center justify-center">
+                     <Maximize2 className="text-white opacity-0 group-hover:opacity-100 transition-opacity duration-500 md:w-8 md:h-8" size={24} />
                   </div>
-                </ScrollReveal>
+                </div>
               ))
             ) : (
               <div className="col-span-full py-16 md:py-24 flex flex-col items-center justify-center text-center bg-slate-50 dark:bg-slate-900/50 rounded-[2rem] md:rounded-[3rem] border border-dashed border-gray-200 dark:border-slate-800">
@@ -283,7 +290,7 @@ function ProjectDetailContent() {
           </div>
         </section>
 
-        <ScrollReveal>
+        <div>
           <div className="p-8 md:p-16 bg-gray-50 dark:bg-slate-900/50 rounded-3xl md:rounded-[4rem] border border-gray-100 dark:border-slate-800">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
               <div className="space-y-3 md:space-y-4">
@@ -300,7 +307,7 @@ function ProjectDetailContent() {
               </div>
             </div>
           </div>
-        </ScrollReveal>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -366,14 +373,13 @@ function ProjectDetailContent() {
               initial={{ scale: 0.9, opacity: 0 }} 
               animate={{ scale: 1, opacity: 1 }} 
               transition={{ duration: 0.3 }} 
-              className="relative w-full h-full max-w-7xl max-h-full"
+              className="relative flex items-center justify-center"
               onClick={(e) => e.stopPropagation()}
             >
-              <Image 
+              <img 
                 src={galleryImages[lightboxIndex]} 
                 alt="Lightbox View"
-                fill
-                className="object-contain rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-white/10"
+                className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-xl md:rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.4)] border border-white/20"
               />
             </motion.div>
           </motion.div>

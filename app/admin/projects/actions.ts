@@ -39,11 +39,11 @@ export async function createProject(formData: any, galleryImages: {path: string}
       location: formData.location,
       category_id: categoryId,
       project_scope_id: scopeId,
-      status_id: formData.status_id,
+      status_id: formData.status_id || 1, // Default to 1 if not provided
       client_id: formData.client_id,
       cover_image: formData.cover_image,
       started_at: formData.started_at,
-      end_at: formData.end_at
+      end_at: formData.end_at || null
     };
 
     const { data: project, error: projectError } = await supabaseAdmin
@@ -55,25 +55,26 @@ export async function createProject(formData: any, galleryImages: {path: string}
     if (projectError) throw projectError;
 
     if (galleryImages.length > 0) {
-      const imagesWithId = galleryImages.map(img => ({ projects_id: project.id, path: img.path }));
-      await supabaseAdmin.from('projects_image').insert(imagesWithId);
+      const { error: imgError } = await supabaseAdmin.from('projects_image').insert(galleryImages.map(img => ({ projects_id: project.id, path: img.path })));
+      if (imgError) throw imgError;
     }
 
     if (videoUrl) {
-      await supabaseAdmin.from('projects_video').insert([{ projects_id: project.id, url: videoUrl }]);
+      const { error: vidError } = await supabaseAdmin.from('projects_video').insert([{ projects_id: project.id, url: videoUrl }]);
+      if (vidError) throw vidError;
     }
 
     revalidatePath("/projects");
     revalidatePath("/admin/projects");
     return { success: true };
   } catch (error: any) {
+    console.error("Action error:", error);
     return { error: error.message };
   }
 }
 
 export async function updateProject(id: string, formData: any, galleryImages: {path: string}[], videoUrl: string | null) {
   try {
-    // 1. Handle Old Media Cleanup if cover changed
     const { data: oldProject } = await supabaseAdmin.from('projects').select('cover_image').eq('id', id).single();
     if (oldProject?.cover_image && oldProject.cover_image !== formData.cover_image) {
         await deleteStorageFile(oldProject.cover_image);
@@ -91,7 +92,8 @@ export async function updateProject(id: string, formData: any, galleryImages: {p
       client_id: formData.client_id,
       cover_image: formData.cover_image,
       started_at: formData.started_at,
-      end_at: formData.end_at
+      end_at: formData.end_at || null
+      // updated_at is handled by database trigger
     };
 
     const { error: projectError } = await supabaseAdmin
@@ -101,11 +103,9 @@ export async function updateProject(id: string, formData: any, galleryImages: {p
 
     if (projectError) throw projectError;
 
-    // 2. Sync Gallery with Cleanup
     const { data: oldImages } = await supabaseAdmin.from('projects_image').select('path').eq('projects_id', id);
     const newPaths = galleryImages.map(img => img.path);
     
-    // Delete images that are no longer in the set
     if (oldImages) {
         for (const img of oldImages) {
             if (!newPaths.includes(img.path)) {
@@ -116,43 +116,36 @@ export async function updateProject(id: string, formData: any, galleryImages: {p
 
     await supabaseAdmin.from('projects_image').delete().eq('projects_id', id);
     if (galleryImages.length > 0) {
-      const imagesWithId = galleryImages.map(img => ({ projects_id: id, path: img.path }));
-      await supabaseAdmin.from('projects_image').insert(imagesWithId);
+      const { error: insImgError } = await supabaseAdmin.from('projects_image').insert(galleryImages.map(img => ({ projects_id: id, path: img.path })));
+      if (insImgError) throw insImgError;
     }
 
     await supabaseAdmin.from('projects_video').delete().eq('projects_id', id);
     if (videoUrl) {
-      await supabaseAdmin.from('projects_video').insert([{ projects_id: id, url: videoUrl }]);
+      const { error: insVidError } = await supabaseAdmin.from('projects_video').insert([{ projects_id: id, url: videoUrl }]);
+      if (insVidError) throw insVidError;
     }
 
     revalidatePath(`/projects/${id}`);
     revalidatePath("/admin/projects");
     return { success: true };
   } catch (error: any) {
+    console.error("Action error:", error);
     return { error: error.message };
   }
 }
 
-export async function deleteProjectAction(id: string) {
+export async function deactivateProjectAction(id: string) {
     try {
-        // 1. Fetch all media associated with project before deletion
-        const { data: project } = await supabaseAdmin.from('projects').select('cover_image').eq('id', id).single();
-        const { data: gallery } = await supabaseAdmin.from('projects_image').select('path').eq('projects_id', id);
-
-        // 2. Delete database record (cascading deletes handles related rows, but we need the URLs first)
-        const { error } = await supabaseAdmin.from('projects').delete().eq('id', id);
+        // Assuming status_id 2 is 'Inactive' based on the seed migration
+        const { error } = await supabaseAdmin
+            .from('projects')
+            .update({ status_id: 2 }) 
+            .eq('id', id);
+            
         if (error) throw error;
-
-        // 3. Clean up Storage
-        if (project?.cover_image) await deleteStorageFile(project.cover_image);
-        if (gallery) {
-            for (const img of gallery) {
-                await deleteStorageFile(img.path);
-            }
-        }
-
+        
         revalidatePath("/admin/projects");
-        revalidatePath("/projects");
         return { success: true };
     } catch (error: any) {
         return { error: error.message };

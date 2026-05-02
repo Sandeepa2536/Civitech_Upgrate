@@ -10,6 +10,8 @@ import Preloader from "@/components/Preloader";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import NextImage from "next/image";
+import { resolveImageUrl } from "@/lib/utils";
+import { useLoading } from "@/components/LoadingContext";
 
 const categories = [
   "All", "Celebrations", "Team Get-Togethers", "CSR Projects", "Annual Milestones", "Site Events"
@@ -17,6 +19,7 @@ const categories = [
 
 function GalleryContent() {
   const searchParams = useSearchParams();
+  const { setIsLoading } = useLoading();
   const [filter, setFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [events, setEvents] = useState<any[]>([]);
@@ -30,6 +33,7 @@ function GalleryContent() {
 
   async function fetchEvents() {
     setLoading(true);
+    setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('gallery_events')
@@ -41,6 +45,7 @@ function GalleryContent() {
       console.error("Error fetching gallery events:", error);
     } finally {
       setLoading(false);
+      setIsLoading(false);
     }
   }
 
@@ -112,9 +117,10 @@ function GalleryContent() {
                   >
                     <div className="aspect-[3/2] p-3 md:p-4 shrink-0 relative">
                       <NextImage
-                        src={item.cover_image}
+                        src={resolveImageUrl(item.cover_image)}
                         alt={item.name}
                         fill
+                        unoptimized
                         className="w-full h-full object-cover rounded-xl md:rounded-2xl group-hover:scale-[1.02] transition-transform duration-500"
                       />
                     </div>
@@ -145,7 +151,11 @@ function GalleryContent() {
 
 export default function GalleryPage() {
   return (
-    <Suspense fallback={<Preloader />}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
+        <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
       <GalleryContent />
     </Suspense>
   );

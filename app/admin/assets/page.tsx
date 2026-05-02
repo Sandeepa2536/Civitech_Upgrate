@@ -80,34 +80,60 @@ export default function AdminMetadataManagement() {
   const [editValue, setEditValue] = useState("");
 
   useEffect(() => {
-    fetchMetadata();
+    fetchAllMetadata();
   }, []);
 
-  async function fetchMetadata() {
+  async function fetchAllMetadata() {
     setFetching(true);
-    try {
-      const { data: catData } = await supabase.from('category').select('*').order('category');
-      const { data: scopeDataRaw } = await supabase.from('project_scope').select('*').order('scope');
-      const { data: clientData } = await supabase.from('clients').select('*').order('id', { ascending: false });
-      const { data: partnerData } = await supabase.from('partners').select('*').order('id', { ascending: false });
+    await Promise.all([
+      fetchCategories(),
+      fetchScopes(),
+      fetchClients(),
+      fetchPartners()
+    ]);
+    setFetching(false);
+  }
 
-      if (catData) setCategories(catData as Category[]);
-      
-      if (scopeDataRaw) {
-        const normalizedScopes = scopeDataRaw.map(s => ({
+  async function fetchCategories() {
+    try {
+      const { data } = await supabase.from('category').select('*').order('category');
+      if (data) setCategories(data as Category[]);
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+    }
+  }
+
+  async function fetchScopes() {
+    try {
+      const { data } = await supabase.from('project_scope').select('*').order('scope');
+      if (data) {
+        const normalized = data.map(s => ({
           id: s.id,
           scope: s.scope,
-          status_id: s.status_id || (s as Record<string, unknown>).Status_id || 1
+          status_id: s.status_id || (s as any).Status_id || 1
         }));
-        setScopes(normalizedScopes as ProjectScope[]);
+        setScopes(normalized as ProjectScope[]);
       }
-
-      if (clientData) setClients(clientData as Client[]);
-      if (partnerData) setPartners(partnerData as Partner[]);
     } catch (error) {
-      console.error("Error fetching metadata:", error);
-    } finally {
-      setFetching(false);
+      console.error("Error fetching scopes:", error);
+    }
+  }
+
+  async function fetchClients() {
+    try {
+      const { data } = await supabase.from('clients').select('*').order('id', { ascending: false });
+      if (data) setClients(data as Client[]);
+    } catch (error) {
+      console.error("Error fetching clients:", error);
+    }
+  }
+
+  async function fetchPartners() {
+    try {
+      const { data } = await supabase.from('partners').select('*').order('id', { ascending: false });
+      if (data) setPartners(data as Partner[]);
+    } catch (error) {
+      console.error("Error fetching partners:", error);
     }
   }
 
@@ -128,7 +154,7 @@ export default function AdminMetadataManagement() {
       const result = await addCategoryAction(newCategory.trim());
       if (result.error) throw new Error(result.error);
       setNewCategory("");
-      fetchMetadata();
+      await fetchCategories();
       showAlert("Category added successfully", "success");
     } catch (error: any) {
       showAlert("Error adding category: " + error.message, "error");
@@ -144,7 +170,7 @@ export default function AdminMetadataManagement() {
       const result = await addScopeAction(newScope.trim());
       if (result.error) throw new Error(result.error);
       setNewScope("");
-      fetchMetadata();
+      await fetchScopes();
       showAlert("Project scope added successfully", "success");
     } catch (error: any) {
       showAlert("Error adding scope: " + error.message, "error");
@@ -166,7 +192,7 @@ export default function AdminMetadataManagement() {
       setNewClient("");
       setNewClientLogo(null);
       setNewClientLogoPreview("");
-      fetchMetadata();
+      await fetchClients();
       showAlert("Client added successfully", "success");
     } catch (error: any) {
       showAlert("Error adding client: " + error.message, "error");
@@ -189,7 +215,7 @@ export default function AdminMetadataManagement() {
       setNewPartnerLogo(null);
       setNewPartnerLogoPreview("");
       showAlert("Partner added successfully", "success");
-      fetchMetadata();
+      await fetchPartners();
     } catch (error: any) {
       showAlert("Error adding partner: " + error.message, "error");
     } finally {
@@ -205,7 +231,12 @@ export default function AdminMetadataManagement() {
       if (result.error) throw new Error(result.error);
       setEditingId(null);
       setEditValue("");
-      fetchMetadata();
+      
+      if (table === 'category') await fetchCategories();
+      else if (table === 'project_scope') await fetchScopes();
+      else if (table === 'clients') await fetchClients();
+      else if (table === 'partners') await fetchPartners();
+
       showAlert("Item renamed successfully", "success");
     } catch (error: any) {
       showAlert("Error renaming item: " + error.message, "error");
@@ -221,7 +252,12 @@ export default function AdminMetadataManagement() {
       const newStatus = currentStatus === 1 ? 2 : 1; 
       const result = await updateAssetStatusAction(table, id, newStatus);
       if (result.error) throw new Error(result.error);
-      fetchMetadata();
+
+      if (table === 'category') await fetchCategories();
+      else if (table === 'project_scope') await fetchScopes();
+      else if (table === 'clients') await fetchClients();
+      else if (table === 'partners') await fetchPartners();
+
       showAlert(`Item ${newStatus === 1 ? 'activated' : 'deactivated'} successfully`, "success");
     } catch (error: any) {
       showAlert("Error updating status: " + error.message, "error");
@@ -238,7 +274,7 @@ export default function AdminMetadataManagement() {
       const result = await updateAssetLogoAction('clients', clientId, logoUrl);
       if (result.error) throw new Error(result.error);
       
-      fetchMetadata();
+      await fetchClients();
       showAlert("Client logo updated", "success");
     } catch (error: any) {
       showAlert("Error updating client logo: " + error.message, "error");
@@ -255,7 +291,7 @@ export default function AdminMetadataManagement() {
       const result = await updateAssetLogoAction('partners', partnerId, logoUrl);
       if (result.error) throw new Error(result.error);
       
-      fetchMetadata();
+      await fetchPartners();
       showAlert("Partner logo updated", "success");
     } catch (error: any) {
       showAlert("Error updating partner logo: " + error.message, "error");

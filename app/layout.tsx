@@ -3,6 +3,7 @@ import { Geist_Mono, Philosopher } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AlertProvider } from "@/components/AlertContext";
+import { LoadingProvider } from "@/components/LoadingContext";
 import Preloader from "@/components/Preloader";
 import LayoutWrapper from "@/components/LayoutWrapper";
 
@@ -74,12 +75,14 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <Preloader />
-          <AlertProvider>
-            <LayoutWrapper>
-              {children}
-            </LayoutWrapper>
-          </AlertProvider>
+          <LoadingProvider>
+            <Preloader />
+            <AlertProvider>
+              <LayoutWrapper>
+                {children}
+              </LayoutWrapper>
+            </AlertProvider>
+          </LoadingProvider>
         </ThemeProvider>
       </body>
     </html>

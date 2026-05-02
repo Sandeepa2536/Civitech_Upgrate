@@ -30,6 +30,8 @@ export default function AdminSettings() {
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [director, setDirector] = useState<{ name: string, bio: string, image: string, email: string } | null>(null);
+  const [secDirector, setSecDirector] = useState<{ name: string, bio: string, image: string, email: string } | null>(null);
   const [content, setContent] = useState<{ [key: string]: string }>({
     office_address: "",
     office_phone: "",
@@ -44,7 +46,6 @@ export default function AdminSettings() {
     director_image: "",
     director_email: "",
     director2_title: "",
-    director2_message: "",
     director2_image: "",
     director2_email: "",
     family_photo: "",
@@ -52,7 +53,64 @@ export default function AdminSettings() {
 
   useEffect(() => {
     fetchContent();
+    fetchDirector();
+    fetchSecDirector();
   }, []);
+
+    async function fetchDirector() {
+      try {
+        const { data, error } = await supabase
+          .from('members')
+          .select(`fname, lname, bio, email, member_profile(path)`)
+          .eq('job_role_id', 2)
+          .single();
+        if (data) {
+          setDirector({
+            name: `${data.fname} ${data.lname}`,
+            bio: data.bio || "",
+            email: data.email || "",
+            image: data.member_profile?.[0]?.path || ""
+          });
+        }
+      } catch (error: any) {
+        console.error("Error fetching MD:", error);
+      }
+    }
+
+    async function fetchSecDirector() {
+      try {
+        const { data, error } = await supabase
+          .from('members')
+          .select(`fname, lname, bio, email, member_profile(path)`)
+          .eq('job_role_id', 3)
+          .limit(1)
+          .single();
+        if (data) {
+          setSecDirector({
+            name: `${data.fname} ${data.lname}`,
+            bio: data.bio || "",
+            email: data.email || "",
+            image: data.member_profile?.[0]?.path || ""
+          });
+        }
+      } catch (error: any) {
+        console.error("Error fetching Director:", error);
+      }
+    }
+
+  async function handleUpdateDirectorBio(newBio: string, newEmail: string) {
+    setLoading(true);
+    try {
+      const result = await updateDirectorBio(newBio, newEmail);
+      if (result.error) throw new Error(result.error);
+      setDirector(prev => prev ? {...prev, bio: newBio, email: newEmail} : null);
+      showAlert("Managing Director Profile Updated!", "success");
+    } catch (error: any) {
+      showAlert("Error: " + error.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function fetchContent() {
     try {
@@ -157,33 +215,84 @@ export default function AdminSettings() {
               <div key={num} className="space-y-10 bg-slate-50/50 dark:bg-slate-950/30 p-10 rounded-[3rem] border border-slate-200 dark:border-slate-800 shadow-inner">
                 <div className="flex items-center gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
                     <span className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 flex items-center justify-center text-[14px] font-black border border-slate-200 dark:border-slate-700 shadow-sm">{num}</span>
-                    <h3 className="text-[12px] font-black text-emerald-600 uppercase tracking-[0.3em]">{num === 1 ? 'PRIMARY' : 'SECONDARY'} DIRECTIVE</h3>
+                    <h3 className="text-[12px] font-black text-emerald-600 uppercase tracking-[0.3em]">{num === 1 ? 'MANAGING DIRECTOR' : 'DIRECTOR'}</h3>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-10">
                   <div className="flex-shrink-0 mx-auto sm:mx-0">
                     <label className="relative w-44 h-56 rounded-[2.5rem] overflow-hidden border-4 border-white dark:border-slate-800 shadow-2xl cursor-pointer group bg-slate-200 dark:bg-slate-900 flex items-center justify-center transition-all hover:scale-[1.02]">
-                      {content[`${prefix}_image`] ? <NextImage src={content[`${prefix}_image`]} alt="" fill className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110" /> : <Upload className="text-slate-400" size={32} />}
-                      <input type="file" className="hidden" accept="image/*" onChange={(e) => handleUpload(e, `${prefix}_image`)} disabled={loading} />
+                      {num === 1 ? (
+                        content.managing_director_image ? (
+                           <NextImage src={content.managing_director_image} alt="Managing Director" fill sizes="100vw" className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110" />
+                        ) : (
+                           <Upload className="text-slate-400" size={32} />
+                        )
+                      ) : (
+                        content.director_image ? (
+                           <NextImage src={content.director_image} alt="Director" fill sizes="100vw" className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110" />
+                        ) : (
+                           <Upload className="text-slate-400" size={32} />
+                        )
+                      )}
+                      <input type="file" className="hidden" accept="image/*" onChange={(e) => handleUpload(e, num === 1 ? 'managing_director_image' : 'director_image')} disabled={loading} />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]"><RefreshCcw className="text-white" size={32} /></div>
                     </label>
                   </div>
                   <div className="flex-1 space-y-8 w-full">
                     <div className="space-y-3">
                       <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">Leadership Designation</label>
-                      <input type="text" value={content[`${prefix}_title`]} onChange={(e) => setContent({...content, [`${prefix}_title`]: e.target.value})} className="w-full px-6 py-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/5 rounded-[1.5rem] outline-none transition-all text-[13px] font-black uppercase tracking-tight text-slate-900 dark:text-white" />
+                      <input 
+                        type="text" 
+                        value={num === 1 ? "MANAGING DIRECTOR" : "DIRECTOR"} 
+                        readOnly
+                        className="w-full px-6 py-5 border rounded-[1.5rem] outline-none transition-all text-[13px] font-black uppercase tracking-tight bg-slate-100 dark:bg-slate-800 text-slate-500" 
+                      />
                     </div>
+                    {num === 1 && (
+                      <div className="space-y-3">
+                        <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">NAME</label>
+                        <input 
+                          type="text" 
+                          value={director?.name || ""} 
+                          readOnly
+                          className="w-full px-6 py-5 border rounded-[1.5rem] bg-slate-100 dark:bg-slate-800 text-slate-500 text-[13px] font-black uppercase tracking-tight" 
+                        />
+                      </div>
+                    )}
+                    {num === 2 && (
+                      <div className="space-y-3">
+                        <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">NAME</label>
+                        <input 
+                          type="text" 
+                          value={secDirector?.name || ""} 
+                          readOnly
+                          className="w-full px-6 py-5 border rounded-[1.5rem] bg-slate-100 dark:bg-slate-800 text-slate-500 text-[13px] font-black uppercase tracking-tight" 
+                        />
+                      </div>
+                    )}
                     <div className="space-y-3">
-                      <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">Secure Email Gateway</label>
+                      <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">CONTACT DIRECTOR EMAIL</label>
                       <div className="relative group">
                         <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-600 transition-colors" size={18} />
-                        <input type="email" value={content[`${prefix}_email`]} onChange={(e) => setContent({...content, [`${prefix}_email`]: e.target.value})} className="w-full pl-14 pr-6 py-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/5 rounded-[1.5rem] outline-none transition-all text-sm font-bold text-slate-900 dark:text-white" />
+                        <input 
+                          type="email" 
+                          value={num === 1 ? (director?.email || "") : (secDirector?.email || "")} 
+                          readOnly
+                          className="w-full pl-14 pr-6 py-5 bg-slate-100 dark:bg-slate-800 border-none rounded-[1.5rem] text-sm font-bold text-slate-500 dark:text-slate-400" 
+                        />
                       </div>
                     </div>
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">Mission Mandate (Vision Message)</label>
-                  <textarea value={content[`${prefix}_message`]} onChange={(e) => setContent({...content, [`${prefix}_message`]: e.target.value})} className="w-full px-8 py-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/5 rounded-[2rem] outline-none transition-all text-[15px] min-h-[160px] font-medium leading-relaxed text-slate-700 dark:text-slate-300 shadow-inner" />
+                  <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest ml-1">MISSION MANDATE (VISION MESSAGE)</label>
+                  <textarea 
+                    value={num === 1 ? (content.managing_director_message || "") : (content.director_message || "")} 
+                    onChange={(e) => {
+                       if (num === 1) setContent({...content, managing_director_message: e.target.value});
+                       else setContent({...content, director_message: e.target.value});
+                    }}
+                    className="w-full px-8 py-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/5 rounded-[2rem] outline-none transition-all text-[15px] min-h-[160px] font-medium leading-relaxed text-slate-700 dark:text-slate-300 shadow-inner" 
+                  />
                 </div>
               </div>
             );
@@ -324,7 +433,7 @@ export default function AdminSettings() {
             <div className="grid md:grid-cols-2 gap-10 items-center">
               <label className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white dark:border-slate-800 shadow-2xl cursor-pointer group bg-slate-100 dark:bg-slate-950 flex items-center justify-center transition-all hover:scale-[1.02]">
                 {content.family_photo ? (
-                  <NextImage src={content.family_photo} alt="Civitech Family" fill className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110" />
+                  <NextImage src={content.family_photo} alt="Civitech Family" fill sizes="100vw" className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110" />
                 ) : (
                   <div className="text-center space-y-4">
                     <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900 flex items-center justify-center mx-auto shadow-lg">

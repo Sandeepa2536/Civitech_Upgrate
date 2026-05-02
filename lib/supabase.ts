@@ -18,6 +18,7 @@ export const supabase = createClient(
 );
 
 // Admin client for server-side mutations (Bypasses RLS - use only in server actions)
+console.log("Initializing supabaseAdmin. Key exists:", !!supabaseServiceKey);
 export const supabaseAdmin = (supabaseUrl && supabaseServiceKey)
   ? createClient(supabaseUrl, supabaseServiceKey, {
       auth: {

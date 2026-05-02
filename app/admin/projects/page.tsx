@@ -14,6 +14,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useAlert } from "@/components/AlertContext";
 import { deleteProjectAction } from "./actions";
+import { resolveImageUrl } from "@/lib/utils";
 
 export default function AdminProjects() {
   const { showAlert } = useAlert();
@@ -29,17 +30,23 @@ export default function AdminProjects() {
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('project_summary')
-        .select('*')
+        .from('projects')
+        .select(`
+          *,
+          category(category),
+          clients(name, logo),
+          status(status),
+          project_scope(scope)
+        `)
         .order('id', { ascending: false });
 
       if (error) throw error;
       
       const mappedProjects = data?.map(p => ({
         ...p,
-        category: { category: p.category },
-        clients: { name: p.client_name },
-        location: p.location_name
+        category: p.category,
+        clients: p.clients,
+        location: p.location // projects table has 'location' column
       })) || [];
       
       setProjects(mappedProjects);
@@ -127,8 +134,12 @@ export default function AdminProjects() {
                   <tr key={project.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors group">
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:text-emerald-600 transition-colors border border-slate-200 dark:border-slate-700">
-                          <Construction size={20} />
+                        <div className="w-12 h-10 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:text-emerald-600 transition-colors border border-slate-200 dark:border-slate-700">
+                          {project.cover_image ? (
+                            <img src={resolveImageUrl(project.cover_image)} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <Construction size={20} />
+                          )}
                         </div>
                         <div className="min-w-0">
                           <div className="font-black text-slate-900 dark:text-white text-sm tracking-tight truncate max-w-[300px] uppercase">{project.title}</div>
@@ -141,8 +152,12 @@ export default function AdminProjects() {
                     </td>
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-2.5 text-slate-700 dark:text-slate-300 text-[10px] font-black uppercase tracking-widest">
-                        <div className="w-6 h-6 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-600">
-                           <User size={12} strokeWidth={3} />
+                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-white dark:bg-slate-950 flex items-center justify-center text-blue-600 border border-slate-100 dark:border-slate-800 shadow-sm">
+                           {project.clients?.logo ? (
+                             <img src={resolveImageUrl(project.clients.logo)} alt="" className="w-full h-full object-contain" />
+                           ) : (
+                             <User size={16} strokeWidth={3} className="opacity-40" />
+                           )}
                         </div>
                         <span className="truncate max-w-[180px]">{project.clients?.name || "Unassigned"}</span>
                       </div>
@@ -186,8 +201,12 @@ export default function AdminProjects() {
                 <div key={project.id} className="p-6 space-y-6 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex-shrink-0 flex items-center justify-center text-slate-400 border border-slate-200 dark:border-slate-700">
-                        <Construction size={20} />
+                      <div className="w-12 h-10 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex-shrink-0 flex items-center justify-center text-slate-400 border border-slate-200 dark:border-slate-700">
+                        {project.cover_image ? (
+                          <img src={resolveImageUrl(project.cover_image)} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <Construction size={20} />
+                        )}
                       </div>
                       <div className="min-w-0">
                         <h3 className="font-black text-slate-900 dark:text-white text-sm uppercase leading-tight line-clamp-2">{project.title}</h3>
@@ -203,9 +222,18 @@ export default function AdminProjects() {
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800/50">
-                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Client</p>
-                      <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase truncate">{project.clients?.name || "Unassigned"}</p>
+                    <div className="bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800/50 flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-white dark:bg-slate-900 flex items-center justify-center border border-slate-100 dark:border-slate-800 shadow-sm">
+                        {project.clients?.logo ? (
+                          <img src={resolveImageUrl(project.clients.logo)} alt="" className="w-full h-full object-contain" />
+                        ) : (
+                          <User size={14} className="text-slate-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Client</p>
+                        <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase truncate">{project.clients?.name || "Unassigned"}</p>
+                      </div>
                     </div>
                     <div className="bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800/50">
                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Category</p>

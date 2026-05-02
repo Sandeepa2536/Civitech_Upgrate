@@ -55,68 +55,64 @@ function TeamContent() {
     try {
       setLoading(true);
       
-      // 1. Fetch Directors' Vision from site_content
       const { data: contentData } = await supabase
         .from('site_content')
-        .select('*')
-        .in('key', [
-          'director_title', 'director_message', 'director_image',
-          'director2_title', 'director2_message', 'director2_image',
-          'family_photo'
-        ]);
+        .select('*');
 
-      const dynamic1: Partial<VisionContent> = {};
-      const dynamic2: Partial<VisionContent> = {};
-      
+      const contentMap: any = {};
       (contentData as SiteContentItem[] | null)?.forEach(item => {
-        if (item.key === 'director_title') dynamic1.title = item.value;
-        if (item.key === 'director_message') dynamic1.message = item.value;
-        if (item.key === 'director_image') dynamic1.image = item.value;
-        
-        if (item.key === 'director2_title') dynamic2.title = item.value;
-        if (item.key === 'director2_message') dynamic2.message = item.value;
-        if (item.key === 'director2_image') dynamic2.image = item.value;
-
-        if (item.key === 'family_photo') setFamilyPhoto(item.value);
+        contentMap[item.key] = item.value;
       });
+      
+      if (contentMap.family_photo) {
+        setFamilyPhoto(contentMap.family_photo);
+      }
 
-      if (dynamic1.title || dynamic1.message) setVisionContent(dynamic1 as VisionContent);
-      if (dynamic2.title || dynamic2.message) setVisionContent2(dynamic2 as VisionContent);
-
-      // 2. Fetch ALL Active Members from optimized view
       const { data: members, error } = await supabase
-        .from('team_profiles')
-        .select('*')
+        .from('members')
+        .select('*, job_role(title), member_profile(path)')
         .order('id', { ascending: true });
 
       if (error) throw error;
 
       if (members) {
-        const mappedMembers: TeamMember[] = members.map(m => ({
+        const leaders: TeamMember[] = [];
+        
+        // Managing Director (job_role_id: 2)
+        const md = members.find(m => m.job_role_id === 2);
+        if (md) {
+            leaders.push({
+                id: md.id,
+                name: `${md.fname} ${md.lname}`,
+                role: "MANAGING DIRECTOR",
+                bio: contentMap.managing_director_message || md.bio || "Visionary Leader",
+                image: contentMap.managing_director_image || md.member_profile?.[0]?.path || "https://via.placeholder.com/150",
+                email: md.email || ""
+            });
+        }
+        
+        // Director (job_role_id: 3)
+        const dir = members.find(m => m.job_role_id === 3);
+        if (dir) {
+            leaders.push({
+                id: dir.id,
+                name: `${dir.fname} ${dir.lname}`,
+                role: "DIRECTOR",
+                bio: contentMap.director_message || dir.bio || "Strategic Director",
+                image: contentMap.director_image || dir.member_profile?.[0]?.path || "https://via.placeholder.com/150",
+                email: dir.email || ""
+            });
+        }
+        setOwners(leaders);
+
+        const others = members.filter(m => m.job_role_id !== 2 && m.job_role_id !== 3).map(m => ({
           id: m.id,
           name: `${m.fname} ${m.lname}`,
-          role: m.role || "Team Member",
-          bio: m.bio || "Dedicated professional at Civitech Constructions.",
-          image: m.image_url || "https://via.placeholder.com/150",
-          email: m.email,
-          linkedin: m.linkedin_url,
-          github: m.github_url
+          role: m.job_role?.title || "Team Member",
+          bio: m.bio || "Dedicated professional.",
+          image: m.member_profile?.[0]?.path || "https://via.placeholder.com/150",
+          email: m.email || ""
         }));
-
-        // Identify Directors (MD and Technical)
-        const md = mappedMembers.find(m => m.email === 'md@civitech.lk');
-        const technical = mappedMembers.find(m => m.email === 'technical@civitech.lk');
-        
-        const directors: TeamMember[] = [];
-        if (md) directors.push(md);
-        if (technical) directors.push(technical);
-
-        // Everyone else goes to the Specialists grid (including admin@civitech.lk if active)
-        const others = mappedMembers.filter(m => 
-          m.email !== 'md@civitech.lk' && m.email !== 'technical@civitech.lk'
-        );
-
-        setOwners(directors);
         setTeamMembers(others);
       }
     } catch (err) {
@@ -166,7 +162,7 @@ function TeamContent() {
                           <NextImage 
                             src={content?.image || owner.image} 
                             fill
-                            className="object-cover transition-all duration-1000 group-hover:scale-110" 
+                            className="object-cover" 
                             alt={owner.name} 
                           />
                         </div>
@@ -269,14 +265,14 @@ function TeamContent() {
               <h2 className="text-3xl md:text-6xl font-bold text-slate-900 dark:text-white uppercase tracking-tighter">The Civitech Family</h2>
             </div>
 
-            <div className="relative rounded-3xl md:rounded-[4rem] overflow-hidden group shadow-[0_50px_100px_-20px_rgba(0,0,0,0.3)] border border-slate-200 dark:border-white/5 aspect-video">
+            <div className="relative rounded-3xl md:rounded-[4rem] overflow-hidden shadow-[0_50px_100px_-20px_rgba(0,0,0,0.3)] border border-slate-200 dark:border-white/5 h-[600px] w-full px-4 md:px-16">
               <NextImage
                 src={familyPhoto || "https://166photography.co.uk/wp-content/uploads/2021/10/JODIE-LIAM-404.jpg"}
                 alt="The Civitech Family"
                 fill
-                className="object-cover transition-transform duration-[2s] group-hover:scale-110"
+                className="object-contain"
               />
-              <div className="absolute inset-0 bg-slate-950/20 transition-all duration-700"></div>
+              <div className="absolute inset-0 bg-slate-950/10"></div>
             </div>
           </ScrollReveal>
         </div>

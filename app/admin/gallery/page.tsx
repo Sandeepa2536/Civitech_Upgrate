@@ -120,7 +120,8 @@ export default function AdminGalleryManagement() {
       showAlert("Event created successfully", "success");
       setIsAddingEvent(false);
       resetForm();
-      fetchEvents();
+      // Update local state instead of full fetch
+      setEvents(prev => [result.data, ...prev]);
     } catch (error: any) {
       showAlert("Error creating event: " + error.message, "error");
     } finally {
@@ -137,7 +138,8 @@ export default function AdminGalleryManagement() {
       
       showAlert("Event purged successfully", "success");
       if (selectedEvent?.id === id) setSelectedEvent(null);
-      fetchEvents();
+      // Update local state instead of full fetch
+      setEvents(prev => prev.filter(e => e.id !== id));
     } catch (error: any) {
       showAlert("System Error: " + error.message, "error");
     } finally {
@@ -165,7 +167,8 @@ export default function AdminGalleryManagement() {
       if (result.error) throw new Error(result.error);
 
       showAlert(`Successfully uploaded ${files.length} images`, "success");
-      fetchEventImages(selectedEvent.id);
+      // Update local state instead of re-fetching from DB
+      setEventImages(prev => [...prev, ...result.data]);
     } catch (error: any) {
       showAlert("Error uploading images: " + error.message, "error");
     } finally {

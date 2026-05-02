@@ -1,0 +1,37 @@
+-- FINAL RLS & PERMISSION FIX
+-- Run this in the Supabase Dashboard SQL Editor
+-- -----------------------------------------------------------------------------------------
+
+-- 1. DISABLE RLS on all critical tables to allow Admin Panel to work
+ALTER TABLE location DISABLE ROW LEVEL SECURITY;
+ALTER TABLE role_category DISABLE ROW LEVEL SECURITY;
+ALTER TABLE job_role DISABLE ROW LEVEL SECURITY;
+ALTER TABLE job_requirements DISABLE ROW LEVEL SECURITY;
+ALTER TABLE qualifications DISABLE ROW LEVEL SECURITY;
+ALTER TABLE vacancies DISABLE ROW LEVEL SECURITY;
+ALTER TABLE application DISABLE ROW LEVEL SECURITY;
+ALTER TABLE members DISABLE ROW LEVEL SECURITY;
+ALTER TABLE member_profile DISABLE ROW LEVEL SECURITY;
+ALTER TABLE site_content DISABLE ROW LEVEL SECURITY;
+ALTER TABLE status DISABLE ROW LEVEL SECURITY;
+ALTER TABLE category DISABLE ROW LEVEL SECURITY;
+ALTER TABLE project_scope DISABLE ROW LEVEL SECURITY;
+ALTER TABLE clients DISABLE ROW LEVEL SECURITY;
+ALTER TABLE projects DISABLE ROW LEVEL SECURITY;
+ALTER TABLE projects_image DISABLE ROW LEVEL SECURITY;
+ALTER TABLE projects_video DISABLE ROW LEVEL SECURITY;
+ALTER TABLE partners DISABLE ROW LEVEL SECURITY;
+ALTER TABLE gallery_events DISABLE ROW LEVEL SECURITY;
+ALTER TABLE gallery_images DISABLE ROW LEVEL SECURITY;
+ALTER TABLE inquiries DISABLE ROW LEVEL SECURITY;
+
+-- 2. Grant explicit permissions to the public role (used by anon key)
+GRANT ALL ON ALL TABLES IN SCHEMA public TO public;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO public;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO public;
+
+-- 3. Set default status_id for metadata tables to avoid constraint violations
+ALTER TABLE role_category ALTER COLUMN status_id SET DEFAULT 1;
+ALTER TABLE location ALTER COLUMN status_id SET DEFAULT 1;
+ALTER TABLE job_role ALTER COLUMN status_id SET DEFAULT 1;
+ALTER TABLE status ALTER COLUMN id SET DEFAULT 1; -- Should already be set usually

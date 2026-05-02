@@ -128,22 +128,27 @@ export default function AdminTeam() {
         return; 
     }
 
-    // Sri Lanka Mobile Validation
-    const slPhoneRegex = /^(?:0|94|\+94)?(?:7(0|1|2|4|5|6|7|8)\d{7}|(?:11|21|23|24|25|26|27|31|32|33|34|35|36|37|38|41|45|47|51|52|54|55|57|63|65|66|67|81|91)\d{7})$/;
-    const cleanMobile = formData.mobile.replace(/\s/g, "");
-    if (formData.mobile && !slPhoneRegex.test(cleanMobile)) {
-      showAlert("Invalid Sri Lanka mobile or landline number format.", "error");
-      return;
+    // Sri Lanka Mobile Validation (Only if provided)
+    if (formData.mobile && formData.mobile.trim() !== "") {
+      const slPhoneRegex = /^(?:0|94|\+94)?(?:7(0|1|2|4|5|6|7|8)\d{7}|(?:11|21|23|24|25|26|27|31|32|33|34|35|36|37|38|41|45|47|51|52|54|55|57|63|65|66|67|81|91)\d{7})$/;
+      const cleanMobile = formData.mobile.replace(/\s/g, "");
+      if (!slPhoneRegex.test(cleanMobile)) {
+        showAlert("Invalid Sri Lanka mobile or landline number format.", "error");
+        return;
+      }
     }
     
     setSubmitting(true);
     try {
+      // Ensure job_role_id is a valid number or null
+      const selectedRoleId = (formData.job_role_id && formData.job_role_id !== "") ? Number(formData.job_role_id) : null;
+
       const payload = {
         fname: formData.fname,
         lname: formData.lname,
         email: formData.email,
         mobile: formData.mobile,
-        job_role_id: Number(formData.job_role_id),
+        job_role_id: selectedRoleId,
         bio: formData.bio,
         linkedin_url: formData.linkedin_url,
         github_url: formData.github_url,
@@ -151,7 +156,7 @@ export default function AdminTeam() {
       };
 
       const result = editingId 
-        ? await updateMemberAction(editingId, payload, formData.image_url)
+        ? await updateMemberAction(editingId.toString(), payload, formData.image_url)
         : await onboardMemberAction(payload, formData.image_url);
 
       if (!result || result.error) throw new Error(result?.error || "Server failed to respond");

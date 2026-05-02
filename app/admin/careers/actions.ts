@@ -36,106 +36,103 @@ export async function deleteApplication(id: number) {
   }
 }
 
-export async function publishVacancyAction(data: {
-  job_role_id?: string;
-  new_job_title?: string;
-  category_id?: string;
-  new_category?: string;
-  location_id?: string;
-  new_location?: string;
-  employment_type_id: number;
-  experience: string;
-  qualifications: string[];
-  closing_date: string;
-}) {
+export async function publishVacancyAction(data: any) {
   try {
-    // 1. Handle Category
-    let finalCategoryId = data.category_id;
-    if (data.new_category?.trim()) {
-      const { data: catData, error: catError } = await supabaseAdmin
-        .from('role_category')
-        .insert([{ category: data.new_category.trim() }])
-        .select()
-        .single();
-      if (catError) throw catError;
-      finalCategoryId = catData.id.toString();
+    console.log("Publishing vacancy with data:", data);
+    
+    // 1. Handle Category, Location & Job Role Logic
+    let finalJobRoleId: number | undefined = (data.job_role_id && data.job_role_id !== "") ? Number(data.job_role_id) : undefined;
+    let finalCategoryId: number | undefined = (data.category_id && data.category_id !== "") ? Number(data.category_id) : undefined;
+    let finalLocationId: number | undefined = (data.location_id && data.location_id !== "") ? Number(data.location_id) : undefined;
+
+    console.log("Initial IDs - Role:", finalJobRoleId, "Cat:", finalCategoryId, "Loc:", finalLocationId);
+
+    if (data.new_category) {
+        console.log("Creating new category:", data.new_category);
+        const { data: newCat, error: catErr } = await supabaseAdmin.from('role_category').insert([{ 
+            category: data.new_category,
+            status_id: 1 // Explicitly setting status to Active
+        }]).select().single();
+        if (catErr) { console.error("Category insert error:", catErr); throw catErr; }
+        finalCategoryId = newCat.id;
     }
 
-    // 2. Handle Location
-    let finalLocationId = data.location_id;
-    if (data.new_location?.trim()) {
-      const { data: locData, error: locError } = await supabaseAdmin
-        .from('location')
-        .insert([{ location: data.new_location.trim() }])
-        .select()
-        .single();
-      if (locError) throw locError;
-      finalLocationId = locData.id.toString();
+    if (data.new_location) {
+        console.log("Creating new location:", data.new_location);
+        const { data: newLoc, error: locErr } = await supabaseAdmin.from('location').insert([{ 
+            location: data.new_location,
+            status_id: 1 // Explicitly setting status to Active
+        }]).select().single();
+        if (locErr) { console.error("Location insert error:", locErr); throw locErr; }
+        finalLocationId = newLoc.id;
     }
 
-    // 3. Handle Job Role
-    let finalJobRoleId = data.job_role_id;
-    if (data.new_job_title?.trim()) {
-      const { data: roleData, error: roleError } = await supabaseAdmin
-        .from('job_role')
-        .insert([{ 
-          title: data.new_job_title.trim(), 
-          status_id: 1,
-          role_category_id: finalCategoryId ? Number(finalCategoryId) : null,
-          location_id: finalLocationId ? Number(finalLocationId) : null,
-          employment_type_id: data.employment_type_id,
-          experience: data.experience
-        }])
-        .select()
-        .single();
-      if (roleError) throw roleError;
-      finalJobRoleId = roleData.id.toString();
-    } else if (finalJobRoleId) {
-        // Update experience on existing role if provided
-        await supabaseAdmin
-            .from('job_role')
-            .update({ 
-                experience: data.experience,
-                location_id: finalLocationId ? Number(finalLocationId) : null,
-                role_category_id: finalCategoryId ? Number(finalCategoryId) : null
-            })
-            .eq('id', finalJobRoleId);
+    if (data.new_job_title || (!finalJobRoleId && data.new_job_title)) {
+        console.log("Creating new job role:", data.new_job_title);
+        
+        if (!finalCategoryId || isNaN(finalCategoryId)) throw new Error("Missing or invalid Category ID for new job role");
+        if (!finalLocationId || isNaN(finalLocationId)) throw new Error("Missing or invalid Location ID for new job role");
+
+        const { data: newRole, error: roleErr } = await supabaseAdmin.from('job_role').insert([{ 
+            title: data.new_job_title, 
+            role_category_id: finalCategoryId,
+            location_id: finalLocationId,
+            employment_type_id: Number(data.employment_type_id) || 1,
+            status_id: 1
+        }]).select().single();
+        if (roleErr) { console.error("Job role insert error:", roleErr); throw roleErr; }
+        finalJobRoleId = newRole.id;
     }
 
-    if (!finalJobRoleId) {
-      throw new Error("Job role ID missing.");
+    console.log("Final Job Role ID for insertion:", finalJobRoleId);
+
+    if (finalJobRoleId === undefined || finalJobRoleId === null || isNaN(finalJobRoleId)) {
+        throw new Error(`Job Role ID is missing or invalid: ${finalJobRoleId}`);
     }
 
-    // 4. Create Qualifications entry (Linked to Job Role)
-    const { error: qualError } = await supabaseAdmin
-      .from('qualifications')
-      .insert([{
-        job_role_id: Number(finalJobRoleId),
+    // 2. Insert into job_requirements
+    const reqs = data.qualifications.map((req: string) => ({
+        job_role_id: finalJobRoleId,
+        requirement: req
+    }));
+    const { error: reqError } = await supabaseAdmin.from('job_requirements').insert(reqs);
+    if (reqError) { console.error("Job requirements insert error:", reqError); throw reqError; }
+
+    // 3. Insert into qualifications (Experience)
+    const qualPayload: any = {
+        job_role_id: finalJobRoleId,
         experience: data.experience || "Not specified",
-        qualification_1: data.qualifications[0],
-        qualification_2: data.qualifications[1] || null,
-        qualification_3: data.qualifications[2] || null,
-        qualification_4: data.qualifications[3] || null,
         status_id: 1
-      }]);
+    };
+    
+    // Attempt with typo column
+    qualPayload.ceated_at = new Date();
 
-    if (qualError) throw qualError;
+    const { error: qualError } = await supabaseAdmin.from('qualifications').insert([qualPayload]);
+    if (qualError) {
+        console.warn("Qualification insert error (retrying with created_at):", qualError.message);
+        delete qualPayload.ceated_at;
+        qualPayload.created_at = new Date();
+        const { error: qualError2 } = await supabaseAdmin.from('qualifications').insert([qualPayload]);
+        if (qualError2) {
+            console.warn("Qualification insert error (retrying without timestamps):", qualError2.message);
+            delete qualPayload.created_at;
+            const { error: finalError } = await supabaseAdmin.from('qualifications').insert([qualPayload]);
+            if (finalError) throw finalError;
+        }
+    }
 
-    // 5. Create Vacancy
-    const { error: vacancyError } = await supabaseAdmin
-      .from('vacancies')
-      .insert([{
-        job_role_id: Number(finalJobRoleId),
+    // 4. Create Vacancy
+    const { error: vacancyError } = await supabaseAdmin.from('vacancies').insert([{
+        job_role_id: finalJobRoleId,
         open_date: new Date().toISOString(),
         closing_date: data.closing_date, 
         status_id: 1
-      }]);
-
-    if (vacancyError) throw vacancyError;
+    }]);
+    if (vacancyError) { console.error("Vacancy insert error:", vacancyError); throw vacancyError; }
 
     revalidatePath('/careers');
     revalidatePath('/admin/careers');
-    
     return { success: true };
   } catch (err: any) {
     console.error("Publish Vacancy Error:", err.message);
@@ -143,68 +140,142 @@ export async function publishVacancyAction(data: {
   }
 }
 
-export async function updateVacancyAction(id: number, data: {
-  job_role_id?: string;
-  category_id?: string;
-  location_id?: string;
-  employment_type_id: number;
-  experience: string;
-  qualifications: string[];
-  closing_date: string;
-}) {
+export async function updateVacancyAction(id: number, data: any) {
   try {
-    // 1. Update Job Role
-    if (data.job_role_id) {
-        const { error: roleError } = await supabaseAdmin
-            .from('job_role')
-            .update({ 
-                experience: data.experience,
-                location_id: data.location_id ? Number(data.location_id) : null,
-                role_category_id: data.category_id ? Number(data.category_id) : null,
-                employment_type_id: data.employment_type_id
-            })
-            .eq('id', Number(data.job_role_id));
-        
-        if (roleError) throw roleError;
+    const vacancyId = Number(id);
+    if (isNaN(vacancyId)) throw new Error("Invalid Vacancy ID (NaN)");
 
-        // 2. Update Qualifications (Linked to Job Role)
-        await supabaseAdmin
-            .from('qualifications')
-            .delete()
-            .eq('job_role_id', Number(data.job_role_id));
+    console.log("Updating vacancy ID:", vacancyId, "with data:", data);
 
-        const { error: qualError } = await supabaseAdmin
-            .from('qualifications')
-            .insert([{
-                job_role_id: Number(data.job_role_id),
-                experience: data.experience || "Not specified",
-                qualification_1: data.qualifications[0],
-                qualification_2: data.qualifications[1] || null,
-                qualification_3: data.qualifications[2] || null,
-                qualification_4: data.qualifications[3] || null,
-                status_id: 1
-            }]);
+    // 1. Handle Category, Location & Job Role Logic
+    let finalJobRoleId: number | undefined = (data.job_role_id && data.job_role_id !== "") ? Number(data.job_role_id) : undefined;
+    let finalCategoryId: number | undefined = (data.category_id && data.category_id !== "") ? Number(data.category_id) : undefined;
+    let finalLocationId: number | undefined = (data.location_id && data.location_id !== "") ? Number(data.location_id) : undefined;
 
-        if (qualError) throw qualError;
+    console.log("Initial IDs for Update - Role:", finalJobRoleId, "Cat:", finalCategoryId, "Loc:", finalLocationId);
+
+    if (data.new_category) {
+        console.log("Creating new category during update:", data.new_category);
+        const { data: newCat, error: catErr } = await supabaseAdmin.from('role_category').insert([{ 
+            category: data.new_category,
+            status_id: 1 
+        }]).select().single();
+        if (catErr) throw catErr;
+        finalCategoryId = newCat.id;
     }
 
-    // 3. Update Vacancy
+    if (data.new_location) {
+        console.log("Creating new location during update:", data.new_location);
+        const { data: newLoc, error: locErr } = await supabaseAdmin.from('location').insert([{ 
+            location: data.new_location,
+            status_id: 1
+        }]).select().single();
+        if (locErr) throw locErr;
+        finalLocationId = newLoc.id;
+    }
+
+    if (data.new_job_title || (!finalJobRoleId && data.new_job_title)) {
+        console.log("Creating new job role during update:", data.new_job_title);
+        
+        if (!finalCategoryId || isNaN(finalCategoryId)) throw new Error("Missing or invalid Category ID for new job role");
+        if (!finalLocationId || isNaN(finalLocationId)) throw new Error("Missing or invalid Location ID for new job role");
+
+        const { data: newRole, error: roleErr } = await supabaseAdmin.from('job_role').insert([{ 
+            title: data.new_job_title, 
+            role_category_id: finalCategoryId,
+            location_id: finalLocationId,
+            employment_type_id: Number(data.employment_type_id) || 1,
+            status_id: 1
+        }]).select().single();
+        if (roleErr) throw roleErr;
+        finalJobRoleId = newRole.id;
+    }
+
+    console.log("Final Job Role ID for update:", finalJobRoleId);
+
+    if (finalJobRoleId === undefined || finalJobRoleId === null || isNaN(finalJobRoleId)) {
+        throw new Error(`Job Role ID is missing or invalid: ${finalJobRoleId}`);
+    }
+
+    // 2. Update Job Role info
+    const { error: roleUpdateError } = await supabaseAdmin.from('job_role').update({
+        employment_type_id: Number(data.employment_type_id) || 1,
+        location_id: finalLocationId
+    }).eq('id', finalJobRoleId);
+    if (roleUpdateError) console.warn("Job role update error (non-critical):", roleUpdateError);
+
+    // 3. Update Requirements
+    const { error: delReqError } = await supabaseAdmin.from('job_requirements').delete().eq('job_role_id', finalJobRoleId);
+    if (delReqError) throw delReqError;
+    
+    const { error: insReqError } = await supabaseAdmin.from('job_requirements').insert(data.qualifications.map((req: string) => ({ job_role_id: finalJobRoleId, requirement: req })));
+    if (insReqError) throw insReqError;
+
+    // 4. Update Qualifications
+    const { error: delQualError } = await supabaseAdmin.from('qualifications').delete().eq('job_role_id', finalJobRoleId);
+    if (delQualError) throw delQualError;
+    
+    const qualPayload: any = { 
+        job_role_id: finalJobRoleId, 
+        experience: data.experience, 
+        status_id: 1
+    };
+    
+    // Attempt with typo column
+    qualPayload.ceated_at = new Date();
+
+    const { error: insQualError } = await supabaseAdmin.from('qualifications').insert([qualPayload]);
+    if (insQualError) {
+        console.warn("Qualification insert error (retrying with created_at):", insQualError.message);
+        // Try with correct spelling
+        delete qualPayload.ceated_at;
+        qualPayload.created_at = new Date();
+        
+        const { error: insQualError2 } = await supabaseAdmin.from('qualifications').insert([qualPayload]);
+        if (insQualError2) {
+             console.warn("Qualification insert error (retrying without timestamps):", insQualError2.message);
+             // Final fallback: no timestamps
+             delete qualPayload.created_at;
+             const { error: finalError } = await supabaseAdmin.from('qualifications').insert([qualPayload]);
+             if (finalError) throw finalError;
+        }
+    }
+
+    // 5. Update Vacancy record
     const { error: vacancyError } = await supabaseAdmin
       .from('vacancies')
-      .update({
+      .update({ 
         closing_date: data.closing_date,
-        updated_at: new Date().toISOString()
+        job_role_id: finalJobRoleId 
       })
-      .eq('id', id);
+      .eq('id', vacancyId);
 
     if (vacancyError) throw vacancyError;
 
     revalidatePath('/careers');
     revalidatePath('/admin/careers');
-    
     return { success: true };
   } catch (err: any) {
-    console.error("Update Vacancy Error:", err.message);
+    console.error("Update Vacancy Action Error:", err.message);
+    return { error: err.message };
+  }
+}
+
+export async function toggleVacancyStatus(id: number, currentStatus: number) {
+  try {
+    const newStatus = currentStatus === 1 ? 2 : 1; // Assuming 1=Active, 2=Inactive
+    const { error } = await supabaseAdmin
+      .from('vacancies')
+      .update({ status_id: newStatus })
+      .eq('id', id);
+
+    if (error) throw error;
+    
+    revalidatePath('/careers');
+    revalidatePath('/admin/careers');
+    return { success: true, newStatus };
+  } catch (err: any) {
+    console.error('Error toggling vacancy status:', err.message);
     return { error: err.message };
   }
 }

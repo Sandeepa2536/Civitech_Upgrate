@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useAlert } from "@/components/AlertContext";
-import { getApplications, deleteApplication, publishVacancyAction, updateVacancyAction, deleteVacancy } from "./actions";
+import { getApplications, deleteApplication, publishVacancyAction, updateVacancyAction, deleteVacancy, toggleVacancyStatus } from "./actions";
 
 interface RoleCategory {
   id: number;
@@ -105,11 +105,24 @@ export default function AdminCareers() {
   }
 
   async function fetchVacancies() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('vacancies')
-      .select('*, job_role(id, title, experience, employment_type_id, role_category_id, location_id, role_category(category), location(location), qualifications(qualification_1, qualification_2, qualification_3, qualification_4))')
-      .gte('closing_date', new Date().toISOString())
+      .select(`
+        *, 
+        job_role(
+          id, 
+          title, 
+          role_category_id, 
+          location_id, 
+          employment_type_id,
+          role_category(id, category), 
+          location(id, location),
+          job_requirements(requirement),
+          qualifications(experience)
+        )
+      `)
       .order('open_date', { ascending: false });
+    if (error) console.error("Error fetching vacancies:", error);
     if (data) setVacancies(data);
   }
 
@@ -163,36 +176,58 @@ export default function AdminCareers() {
   };
 
   const handleEditVacancy = (vacancy: any) => {
-    const role = vacancy.job_role;
-    const quals = role.qualifications?.[0] || {};
-    const qualList = [
-        quals.qualification_1,
-        quals.qualification_2,
-        quals.qualification_3,
-        quals.qualification_4
-    ].filter(q => q && q.trim() !== "");
+    console.log("Editing vacancy raw data:", vacancy);
+    const role = vacancy.job_role || {};
+    
+    // Requirements might be directly on vacancy or nested in role
+    const reqs = role.job_requirements || vacancy.job_requirements || [];
+    const qualList = reqs.map((r: any) => r.requirement);
     
     // Ensure at least 4 spots for UX
     while (qualList.length < 4) qualList.push("");
 
+    const categoryId = role.role_category_id || role.role_category?.id || "";
+    const locationId = role.location_id || role.location?.id || "";
+    
+    // Experience might be in qualifications table
+    const experience = role.qualifications?.[0]?.experience || vacancy.experience || role.experience || "";
+
     setEditingVacancy(vacancy);
     setNewVacancy({
-        job_role_id: role.id.toString(),
+        job_role_id: role.id?.toString() || "",
         new_job_title: "",
-        category_id: role.role_category_id?.toString() || "",
+        category_id: categoryId.toString(),
         new_category: "",
-        location_id: role.location_id?.toString() || "",
+        location_id: locationId.toString(),
         new_location: "",
         type: role.employment_type_id === 1 ? "Full-Time" : role.employment_type_id === 2 ? "Contract" : "Internship",
-        experience: role.experience || "",
+        experience: experience,
         qualifications: qualList,
         closing_date: vacancy.closing_date ? new Date(vacancy.closing_date).toISOString().split('T')[0] : ""
     });
+    
     setIsAddingNewRole(false);
     setIsAddingNewCategory(false);
     setIsAddingNewLocation(false);
     setShowVacancyModal(true);
   };
+
+  async function handleToggleStatus(id: number, currentStatusId: number, closingDate: string) {
+    // If trying to activate an expired vacancy, warn the user
+    const isExpired = new Date(closingDate) < new Date();
+    if (currentStatusId !== 1 && isExpired) {
+        showAlert("Cannot activate an expired vacancy. Please update the closing date first.", "error");
+        return;
+    }
+
+    const res = await toggleVacancyStatus(id, currentStatusId);
+    if (res.success) {
+      setVacancies(vacancies.map(v => v.id === id ? { ...v, status_id: res.newStatus } : v));
+      showAlert(`Vacancy ${res.newStatus === 1 ? 'Activated' : 'Deactivated'}`, "success");
+    } else {
+      showAlert("Error: " + res.error, "error");
+    }
+  }
 
   async function handleDeleteVacancy(id: number) {
     if (!confirm("Permanently delete this vacancy?")) return;
@@ -225,6 +260,15 @@ export default function AdminCareers() {
     setIsAddingNewLocation(false);
   };
 
+  useEffect(() => {
+    if (showVacancyModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [showVacancyModal]);
+
   async function publishVacancy() {
     const filledQualifications = newVacancy.qualifications.filter(q => q.trim() !== "");
     if (filledQualifications.length < 3) {
@@ -246,11 +290,15 @@ export default function AdminCareers() {
         new_category: isAddingNewCategory ? newVacancy.new_category : undefined,
         location_id: isAddingNewLocation ? undefined : newVacancy.location_id,
         new_location: isAddingNewLocation ? newVacancy.new_location : undefined,
-        employment_type_id: newVacancy.type === "Full-Time" ? 1 : 2,
+        employment_type_id: newVacancy.type === "Full-Time" ? 1 : newVacancy.type === "Contract" ? 2 : 3,
         experience: newVacancy.experience,
         qualifications: filledQualifications,
         closing_date: new Date(newVacancy.closing_date).toISOString()
       };
+
+      console.log("Submitting Vacancy Payload:", payload);
+      console.log("isAddingNewRole:", isAddingNewRole);
+      console.log("editingVacancy ID:", editingVacancy?.id);
 
       const result = editingVacancy 
         ? await updateVacancyAction(editingVacancy.id, payload)
@@ -377,10 +425,26 @@ export default function AdminCareers() {
                     </div>
                     <div className="text-right flex flex-col items-end gap-3">
                         <div className="flex gap-2 mb-1">
+                            <button 
+                                onClick={() => handleToggleStatus(vacancy.id, vacancy.status_id, vacancy.closing_date)} 
+                                title={vacancy.status_id === 1 ? "Deactivate" : "Activate"}
+                                className={`p-2.5 rounded-xl transition-all border ${vacancy.status_id === 1 ? 'bg-amber-50 text-amber-600 border-amber-100 hover:bg-amber-600 hover:text-white' : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-600 hover:text-white'}`}
+                            >
+                                {vacancy.status_id === 1 ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
+                            </button>
                             <button onClick={() => handleEditVacancy(vacancy)} className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-emerald-600 rounded-xl transition-all border border-slate-100 dark:border-slate-700"><Edit2 size={14} /></button>
-                            <button onClick={() => handleDeleteVacancy(vacancy.id)} className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-400 hover:text-rose-500 rounded-xl transition-all border border-slate-100 dark:border-slate-700"><Trash2 size={14} /></button>
                         </div>
-                        <div className="px-4 py-1.5 bg-emerald-500/10 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-500/20">Active Hiring</div>
+                        {(() => {
+                            const isExpired = new Date(vacancy.closing_date) < new Date();
+                            if (isExpired && vacancy.status_id === 1) {
+                                return <div className="px-4 py-1.5 bg-rose-500/10 text-rose-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-rose-500/20">Expired</div>;
+                            }
+                            return (
+                                <div className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${vacancy.status_id === 1 ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-slate-500/10 text-slate-500 border-slate-500/20'}`}>
+                                    {vacancy.status_id === 1 ? 'Active Hiring' : 'Inactive'}
+                                </div>
+                            );
+                        })()}
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2"><Clock size={12} /> Posted {new Date(vacancy.open_date).toLocaleDateString()}</span>
                     </div>
                 </motion.div>
@@ -411,10 +475,12 @@ export default function AdminCareers() {
                         <div className="space-y-6">
                             <div className="flex items-center justify-between">
                                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] ml-1">Category</label>
-                                <button onClick={() => { setIsAddingNewCategory(!isAddingNewCategory); setIsAddingNewRole(true); }} className="text-[9px] font-black text-emerald-600 uppercase tracking-widest px-3 py-1 bg-emerald-500/10 rounded-lg border border-emerald-500/10 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
-                                    {isAddingNewCategory ? <X size={10} /> : <Plus size={10} />}
-                                    {isAddingNewCategory ? 'Cancel' : 'Add New'}
-                                </button>
+                                {!editingVacancy && (
+                                    <button onClick={() => { setIsAddingNewCategory(!isAddingNewCategory); setIsAddingNewRole(true); }} className="text-[9px] font-black text-emerald-600 uppercase tracking-widest px-3 py-1 bg-emerald-500/10 rounded-lg border border-emerald-500/10 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
+                                        {isAddingNewCategory ? <X size={10} /> : <Plus size={10} />}
+                                        {isAddingNewCategory ? 'Cancel' : 'Add New'}
+                                    </button>
+                                )}
                             </div>
                             {isAddingNewCategory ? (
                                 <div className="relative group">
@@ -424,7 +490,7 @@ export default function AdminCareers() {
                             ) : (
                                 <div className="relative group/select">
                                     <Filter className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-600 transition-colors pointer-events-none" size={20} />
-                                    <select required value={newVacancy.category_id} onChange={handleCategoryChange} className="w-full pl-16 pr-10 py-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-emerald-500 rounded-[1.5rem] outline-none transition-all text-sm font-black uppercase tracking-wider appearance-none cursor-pointer text-slate-900 dark:text-white">
+                                    <select required disabled={!!editingVacancy} value={newVacancy.category_id} onChange={handleCategoryChange} className="w-full pl-16 pr-10 py-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-emerald-500 rounded-[1.5rem] outline-none transition-all text-sm font-black uppercase tracking-wider appearance-none cursor-pointer text-slate-900 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed">
                                         <option value="">SELECT CATEGORY...</option>
                                         {categories.map(c => <option key={c.id} value={c.id}>{c.category}</option>)}
                                     </select>
@@ -437,7 +503,7 @@ export default function AdminCareers() {
                         <div className="space-y-6">
                             <div className="flex items-center justify-between">
                                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] ml-1">Job Title</label>
-                                {!isAddingNewCategory && (
+                                {!isAddingNewCategory && !editingVacancy && (
                                     <button onClick={() => setIsAddingNewRole(!isAddingNewRole)} className="text-[9px] font-black text-emerald-600 uppercase tracking-widest px-3 py-1 bg-emerald-500/10 rounded-lg border border-emerald-500/10 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
                                         {isAddingNewRole ? <X size={10} /> : <Plus size={10} />}
                                         {isAddingNewRole ? 'Cancel' : 'Add New'}
@@ -452,7 +518,7 @@ export default function AdminCareers() {
                             ) : (
                                 <div className="relative group/select">
                                     <Briefcase className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-600 transition-colors pointer-events-none" size={20} />
-                                    <select required disabled={!newVacancy.category_id} value={newVacancy.job_role_id} onChange={(e) => setNewVacancy({...newVacancy, job_role_id: e.target.value})} className="w-full pl-16 pr-10 py-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-emerald-500 rounded-[1.5rem] outline-none transition-all text-sm font-black uppercase tracking-wider appearance-none cursor-pointer disabled:opacity-50 text-slate-900 dark:text-white">
+                                    <select required disabled={!newVacancy.category_id || !!editingVacancy} value={newVacancy.job_role_id} onChange={(e) => setNewVacancy({...newVacancy, job_role_id: e.target.value})} className="w-full pl-16 pr-10 py-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-emerald-500 rounded-[1.5rem] outline-none transition-all text-sm font-black uppercase tracking-wider appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 dark:text-white">
                                         <option value="">{newVacancy.category_id ? 'SELECT JOB ROLE...' : 'SELECT CATEGORY FIRST...'}</option>
                                         {filteredJobRoles.map(role => <option key={role.id} value={role.id}>{role.title}</option>)}
                                     </select>
@@ -471,21 +537,11 @@ export default function AdminCareers() {
                                 </select>
                             </div>
                             <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] ml-1">Location</label>
-                                    <button onClick={() => setIsAddingNewLocation(!isAddingNewLocation)} className="text-[9px] font-black text-emerald-600 uppercase tracking-widest px-3 py-1 bg-emerald-500/10 rounded-lg border border-emerald-500/10 hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
-                                        {isAddingNewLocation ? <X size={10} /> : <Plus size={10} />}
-                                        {isAddingNewLocation ? 'Cancel' : 'Add New'}
-                                    </button>
-                                </div>
-                                {isAddingNewLocation ? (
-                                    <input required type="text" placeholder="NEW LOCATION..." value={newVacancy.new_location} onChange={(e) => setNewVacancy({...newVacancy, new_location: e.target.value})} className="w-full px-6 py-6 bg-slate-50 dark:bg-slate-900 border-2 border-emerald-500/20 focus:border-emerald-500 rounded-[1.5rem] outline-none transition-all text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white" />
-                                ) : (
-                                    <select required value={newVacancy.location_id} onChange={(e) => setNewVacancy({...newVacancy, location_id: e.target.value})} className="w-full px-6 py-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-emerald-500 rounded-[1.5rem] outline-none transition-all text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white">
-                                        <option value="">SELECT LOCATION...</option>
-                                        {locations.map(l => <option key={l.id} value={l.id}>{l.location}</option>)}
-                                    </select>
-                                )}
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] ml-1">Location</label>
+                                <select required value={newVacancy.location_id} onChange={(e) => setNewVacancy({...newVacancy, location_id: e.target.value})} className="w-full px-6 py-6 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:border-emerald-500 rounded-[1.5rem] outline-none transition-all text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                                    <option value="">SELECT LOCATION...</option>
+                                    {locations.map(l => <option key={l.id} value={l.id}>{l.location}</option>)}
+                                </select>
                             </div>
                         </div>
 

@@ -5,6 +5,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import NextImage from "next/image";
 import { useSearchParams } from "next/navigation";
+import { useLoading } from "@/components/LoadingContext";
+import { resolveImageUrl } from "@/lib/utils";
+import { MapPin, Eye, CheckCircle2, Clock, Briefcase, Search } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
+import { supabase } from "@/lib/supabase";
 
 interface Project {
   id: string;
@@ -14,16 +19,12 @@ interface Project {
   status: string;
   image: string;
 }
-import { MapPin, Eye, CheckCircle2, Clock, Briefcase, Search } from "lucide-react";
-import PageHeader from "@/components/PageHeader";
-import ScrollReveal from "@/components/ScrollReveal";
-
-import { supabase } from "@/lib/supabase";
 
 const statuses = ["All Status", "Completed", "Ongoing"];
 
 function ProjectsContent() {
   const searchParams = useSearchParams();
+  const { setIsLoading } = useLoading();
   const [projects, setProjects] = useState<Project[]>([]);
   const [dynamicCategories, setDynamicCategories] = useState<string[]>(["All"]);
   const [loading, setLoading] = useState(true);
@@ -58,26 +59,33 @@ function ProjectsContent() {
   async function fetchProjects() {
     try {
       setLoading(true);
+      setIsLoading(true);
       const { data, error } = await supabase
-        .from('project_summary')
-        .select('*')
+        .from('projects')
+        .select(`
+          *,
+          category(category),
+          status(status)
+        `)
         .order('id', { ascending: false });
 
       if (error) throw error;
-      
+
       const mappedProjects = (data || []).map(p => ({
         id: p.id.toString(),
         name: p.title,
-        location: p.location_name,
-        category: p.category || "Uncategorized",
-        status: p.status || "Unknown",
-        image: p.cover_image || "/projects/image1.png"
+        location: p.location,
+        category: (p.category as any)?.category || "Uncategorized",
+        status: (p.status as any)?.status || "Unknown",
+        image: resolveImageUrl(p.cover_image)
       }));
+
       setProjects(mappedProjects);
     } catch (error) {
       console.error('Error fetching projects:', error);
     } finally {
       setLoading(false);
+      setIsLoading(false);
     }
   }
 
@@ -101,8 +109,6 @@ function ProjectsContent() {
     return categoryMatch && statusMatch && searchMatch;
   });
 
-  const completedCount = projects.filter(p => p.status === "Completed").length;
-
   return (
     <main className="pb-20 bg-white dark:bg-slate-950 transition-colors duration-300">
       <PageHeader
@@ -113,13 +119,8 @@ function ProjectsContent() {
         backgroundImage="https://www.secsl.gov.lk/wp-content/uploads/2023/01/img-bg.jpg"
       />
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-        className="max-w-7xl mx-auto px-4 sm:px-6 mt-8 md:mt-16"
-      >
-        <ScrollReveal>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 mt-8 md:mt-16">
+        <div>
           <div className="flex flex-wrap justify-center gap-4 md:gap-6 mb-12 md:mb-16">
             {[
               { label: "All Projects", value: projects.length, icon: <Briefcase size={20} className="md:w-[22px] md:h-[22px]" />, color: "blue", bg: "from-blue-50 to-white", border: "border-blue-100", iconBg: "bg-blue-600 text-white shadow-blue-200" },
@@ -144,9 +145,9 @@ function ProjectsContent() {
               </div>
             ))}
           </div>
-        </ScrollReveal>
+        </div>
 
-        <ScrollReveal delay={0.1}>
+        <div>
           <div className="border-b border-gray-100 dark:border-slate-800 pb-6 md:pb-8 mb-8 md:mb-10 text-center">
             <div className="flex flex-wrap justify-center gap-2 md:gap-3 mb-6 md:mb-8">
               {dynamicCategories.map((cat) => {
@@ -182,9 +183,9 @@ function ProjectsContent() {
               </div>
             </div>
           </div>
-        </ScrollReveal>
+        </div>
 
-        <ScrollReveal delay={0.2}>
+        <div>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4 mb-6">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter Status:</span>
             <div className="flex bg-gray-50 dark:bg-slate-900 p-1 rounded-lg md:rounded-xl border border-gray-100 dark:border-slate-800">
@@ -211,12 +212,12 @@ function ProjectsContent() {
               </p>
             </div>
           </div>
-        </ScrollReveal>
+        </div>
 
         <AnimatePresence mode="popLayout">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8 mb-20 md:mb-24">
             {filteredProjects.map((project, idx) => (
-              <ScrollReveal key={project.id} delay={idx * 0.05} className="h-full">
+              <div key={project.id} className="h-full">
                 <motion.div
                   layout
                   initial={{ opacity: 0, scale: 0.9 }}
@@ -229,6 +230,7 @@ function ProjectsContent() {
                       src={project.image}
                       alt={project.name}
                       fill
+                      unoptimized
                       className="w-full h-full object-cover rounded-xl md:rounded-2xl"
                     />
                   </div>
@@ -265,7 +267,7 @@ function ProjectsContent() {
                     </div>
                   </div>
                 </motion.div>
-              </ScrollReveal>
+              </div>
             ))}
           </div>
         </AnimatePresence>
@@ -275,7 +277,7 @@ function ProjectsContent() {
             <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">No projects found in this category.</p>
           </div>
         )}
-      </motion.div>
+      </div>
     </main>
   );
 }

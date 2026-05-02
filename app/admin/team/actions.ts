@@ -5,8 +5,18 @@ import { revalidatePath } from "next/cache";
 
 export async function onboardMemberAction(memberData: any, imagePath: string) {
   try {
+    console.log("Onboarding member:", memberData.fname, "Role ID:", memberData.job_role_id);
+    
     if (!memberData || !memberData.fname) {
       return { error: "Incomplete member data provided." };
+    }
+
+    // Safety: ensure numeric IDs
+    memberData.job_role_id = memberData.job_role_id ? Number(memberData.job_role_id) : null;
+    memberData.status_id = memberData.status_id ? Number(memberData.status_id) : 1;
+
+    if (memberData.job_role_id === 0 || isNaN(memberData.job_role_id)) {
+        memberData.job_role_id = null;
     }
 
     const { data: member, error: memberError } = await supabaseAdmin
@@ -15,29 +25,47 @@ export async function onboardMemberAction(memberData: any, imagePath: string) {
       .select()
       .single();
 
-    if (memberError) return { error: memberError.message };
+    if (memberError) {
+        console.error("Member Insert Error:", memberError);
+        return { error: memberError.message };
+    }
 
-    if (member) {
-      await supabaseAdmin
+    if (member && imagePath && imagePath.trim() !== "") {
+      const { error: profileError } = await supabaseAdmin
         .from('member_profile')
-        .insert([{ members_id: member.id, path: imagePath || 'https://via.placeholder.com/150' }]);
+        .insert([{ members_id: member.id, path: imagePath }]);
+      if (profileError) console.error("Profile Insert Error:", profileError);
     }
 
     revalidatePath("/about/team");
     revalidatePath("/admin/team");
     return { success: true };
   } catch (err: any) {
+    console.error("Onboard Crash:", err);
     return { error: err.message };
   }
 }
 
 export async function updateMemberAction(id: string, memberData: any, imagePath: string | null) {
   try {
+    const memberId = Number(id);
+    console.log("Updating member ID:", memberId, "Data:", memberData);
+
+    if (isNaN(memberId)) throw new Error("Invalid Member ID (NaN)");
+
+    // Safety: ensure numeric IDs
+    memberData.job_role_id = memberData.job_role_id ? Number(memberData.job_role_id) : null;
+    memberData.status_id = memberData.status_id ? Number(memberData.status_id) : 1;
+
+    if (memberData.job_role_id === 0 || isNaN(memberData.job_role_id)) {
+        memberData.job_role_id = null;
+    }
+
     // 1. Update Member Core Data
     const { error: memberError } = await supabaseAdmin
       .from('members')
       .update(memberData)
-      .eq('id', id);
+      .eq('id', memberId);
 
     if (memberError) {
       console.error("Supabase Member Update Error:", memberError);
@@ -50,7 +78,7 @@ export async function updateMemberAction(id: string, memberData: any, imagePath:
       const { data: existing } = await supabaseAdmin
         .from('member_profile')
         .select('id')
-        .eq('members_id', id)
+        .eq('members_id', memberId)
         .maybeSingle();
       
       if (existing) {
@@ -58,13 +86,13 @@ export async function updateMemberAction(id: string, memberData: any, imagePath:
         const { error: upError } = await supabaseAdmin
           .from('member_profile')
           .update({ path: imagePath })
-          .eq('members_id', id);
+          .eq('members_id', memberId);
         if (upError) console.error("Profile update error:", upError);
       } else {
         // Create new profile link
         const { error: inError } = await supabaseAdmin
           .from('member_profile')
-          .insert([{ members_id: id, path: imagePath }]);
+          .insert([{ members_id: memberId, path: imagePath }]);
         if (inError) console.error("Profile insert error:", inError);
       }
     }

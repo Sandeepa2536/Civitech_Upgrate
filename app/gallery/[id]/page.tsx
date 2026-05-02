@@ -5,14 +5,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import PageHeader from "@/components/PageHeader";
 import { ArrowLeft, Maximize2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback } from "react";
-import Preloader from "@/components/Preloader";
 import { supabase } from "@/lib/supabase";
+import { resolveImageUrl } from "@/lib/utils";
+import { useLoading } from "@/components/LoadingContext";
 
 function GalleryDetailContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const backCat = searchParams.get("cat") || "All";
+  const { setIsLoading } = useLoading();
   
   const [event, setEvent] = useState<any>(null);
   const [images, setImages] = useState<string[]>([]);
@@ -26,6 +28,7 @@ function GalleryDetailContent() {
   async function fetchEventDetails() {
     if (!params.id) return;
     setLoading(true);
+    setIsLoading(true);
     try {
       const { data: eventData, error: eventError } = await supabase
         .from('gallery_events')
@@ -43,11 +46,12 @@ function GalleryDetailContent() {
         .order('created_at', { ascending: true });
       
       if (imageError) throw imageError;
-      setImages(imageData.map(img => img.image_url));
+      setImages(imageData.map(img => resolveImageUrl(img.image_url)));
     } catch (error) {
       console.error("Error fetching event details:", error);
     } finally {
       setLoading(false);
+      setIsLoading(false);
     }
   }
 
@@ -74,8 +78,21 @@ function GalleryDetailContent() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [lightboxIndex, nextImage, prevImage]);
 
-  if (loading) return <Preloader />;
-  if (!event) return <div className="p-20 text-center font-bold uppercase tracking-widest text-slate-400">Event not found</div>;
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
+    </div>
+  );
+  
+  if (!event) return (
+    <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
+      <div className="text-center">
+        <h2 className="text-xl font-bold text-slate-900 dark:text-white uppercase tracking-widest mb-4">Event not found</h2>
+        <button onClick={() => router.push('/gallery')} className="text-emerald-600 font-bold uppercase text-xs tracking-widest hover:underline flex items-center gap-2 mx-auto">
+          <ArrowLeft size={16} /> Return to Gallery
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <main className="min-h-screen bg-white dark:bg-slate-950 font-sans transition-colors duration-300 pb-20 overflow-hidden">
@@ -138,7 +155,7 @@ function GalleryDetailContent() {
                   animate={{ opacity: 1, scale: 1 }} 
                   transition={{ duration: 0.3 }} 
                   src={images[lightboxIndex]} 
-                  className="max-w-full max-h-[70vh] object-contain rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-white/10" 
+                  className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.5)] border border-white/10" 
                 />
 
                 <div className="flex flex-col items-center gap-4 z-[1010]">
@@ -160,7 +177,11 @@ function GalleryDetailContent() {
 
 export default function GalleryDetail() {
   return (
-    <Suspense fallback={<Preloader />}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
+        <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
       <GalleryDetailContent />
     </Suspense>
   );
